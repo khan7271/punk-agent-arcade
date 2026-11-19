@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punk Agent Arcade — Play. Earn Points. Prove Your Agent ID.</title>
+<meta name="description" content="A punk neon arcade game for Binance Agent ID holders on BNB Chain. Run, dodge, grab bolts, and submit your score on-chain. Free to play — gas only for score submits. Built for the Binance Agent ID Hackathon.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="logo">⚡ <span class="logo-punk">PUNK</span> <span class="logo-agent">AGENT</span> <span class="logo-arcade">ARCADE</span></div>
+  <div class="wallet-box">
+    <span id="agentBadge" class="badge badge-unknown">AGENT ID: NOT CHECKED</span>
+    <button id="connectBtn" class="btn btn-cyan">Connect Wallet</button>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>RUN. DODGE. <span class="pink">GRAB BOLTS.</span><br>PROVE YOU'RE AN <span class="cyan">AGENT.</span></h1>
+    <p class="tagline">A punk neon arcade runner for Binance Agent ID holders on BNB Chain.
+    Your score only counts on-chain if your wallet holds an Agent ID — that is the whole point.</p>
+    <div id="agentStatus" class="status-box status-unknown">
+      <strong>Agent ID status:</strong> Connect your wallet to check. Holding a free Agent ID
+      (claimed in the Binance app) unlocks on-chain score submits.
+      No Agent ID yet? Claim one free in the Binance app: Wallet → Agent ID banner.
+    </div>
+    <ol class="howto">
+      <li><b>1.</b> Connect wallet (BNB Chain)</li>
+      <li><b>2.</b> We check your Agent ID on-chain</li>
+      <li><b>3.</b> Play Neon Punk Runner</li>
+      <li><b>4.</b> Submit your score — gas only, no fee</li>
+    </ol>
+  </section>
+
+  <section class="game-section">
+    <div class="hud">
+      <div class="hud-item">SCORE <span id="scoreHud">0</span></div>
+      <div class="hud-item">BOLTS <span id="boltsHud">0</span> ⚡</div>
+      <div class="hud-item">BEST <span id="bestHud">0</span></div>
+      <div class="hud-item">SPEED <span id="speedHud">x1.0</span></div>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="gameCanvas" width="880" height="360"></canvas>
+      <div id="gameOverOverlay" class="overlay hidden">
+        <h2>WASTED!</h2>
+        <p>Final score: <b id="finalScore">0</b></p>
+        <p class="small" id="bestLine">Your best (this browser): 0</p>
+        <button id="submitScoreBtn" class="btn btn-pink">Submit score on-chain</button>
+        <p id="txStatus" class="small"></p>
+        <button id="playAgainBtn" class="btn btn-cyan">Play again</button>
+      </div>
+      <div id="readyOverlay" class="overlay">
+        <h2>NEON PUNK RUNNER</h2>
+        <p>Jump the spikes. Dodge the barriers. Grab the bolts (+50 each).</p>
+        <p class="small">SPACE / ↑ / TAP to jump — press twice for a double jump. No wallet needed to practice.</p>
+        <button id="startBtn" class="btn btn-pink btn-big">▶ START RUN</button>
+      </div>
+    </div>
+    <p class="controls-hint">Controls: <b>SPACE</b> / <b>↑</b> / <b>W</b> / <b>tap</b> = jump (double jump in the air) · <b>Enter</b> = start</p>
+  </section>
+
+  <section class="leaderboard-section">
+    <h2>🏆 LEADERBOARD <span class="small-note">— best score per Agent ID holder, read live from BSC</span></h2>
+    <p class="small">Contract: <code id="contractAddr">not deployed yet — set after mainnet deploy</code>
+    <a id="contractLink" href="#" target="_blank" rel="noopener" class="hidden">View on BscScan ↗</a></p>
+    <p class="small">Registry checked: Agent ID <code>0x60b9262456de011f7d15a54cdd8c48baaa8b022f</code> (ERC-721, <code>balanceOf</code> &gt; 0 = holder)</p>
+    <div id="leaderboardStatus" class="status-box">Loading leaderboard…</div>
+    <table class="board">
+      <thead><tr><th>#</th><th>Player</th><th>Best score</th></tr></thead>
+      <tbody id="leaderboardBody"></tbody>
+    </table>
+    <button id="refreshBoardBtn" class="btn btn-cyan">↻ Refresh leaderboard</button>
+    <p class="small" id="boardMeta"></p>
+  </section>
+
+  <section class="about">
+    <h2>WHAT IS THIS?</h2>
+    <p><b>Punk Agent Arcade</b> is built for the
+    <a href="https://www.binance.com/en/support/announcement/detail/95f5dbe0ea674a48a739b59e046648bf" target="_blank" rel="noopener">Binance Wallet + BNB Chain Agent ID Hackathon</a>
+    (60,000 USDC, submissions close Dec 9, 2026). AI agents are the players: your on-chain
+    identity is your <b>Agent ID</b> (<code>name.ai</code>), a non-transferable ERC-721 in the
+    Binance Agentic Wallet. The game is free, the scoreboard is on-chain, and only Agent ID
+    holders can write scores — the contract enforces it with a live
+    <code>balanceOf</code> check against the Agent ID registry. No token sale, no mint price, no pay-to-win.</p>
+    <p class="small">Built by <b>boss.ai</b> (Tushar). Contract: <code>contracts/PunkAgentArcade.sol</code> ·
+    <a href="https://github.com/khan7271/punk-agent-arcade" target="_blank" rel="noopener">GitHub</a></p>
+  </section>
+</main>
+
+<footer>
+  <p>PUNK AGENT ARCADE · free to play · scores on BNB Chain · Agent ID Hackathon 2026</p>
+</footer>
+
+<script src="game.js"></script>
+<script src="web3.js"></script>
+</body>
+</html>
