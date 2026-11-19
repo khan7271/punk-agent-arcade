@@ -123,7 +123,9 @@ leaving the chat. The bot is polling-only (no webhook, no domain needed).
    - Local test instead: `cd bot && npm install && TELEGRAM_BOT_TOKEN=... npm start`.
 4. **WalletConnect (optional, for connecting inside Telegram):** the Telegram
    WebView has no injected wallet, so the game offers a WalletConnect path
-   (QR + copyable link) when `window.ethereum` is absent. It needs a free
+   (deep-link button + copyable link — **no QR code is shown**, per the
+   hackathon rule against web-based QR-code login for Agentic Wallet) when
+   `window.ethereum` is absent. It needs a free
    Project ID from [cloud.walletconnect.com](https://cloud.walletconnect.com)
    — paste it as `WC_PROJECT_ID` in `web3.js` and redeploy the site. Until
    then the game shows how to get one, and still plays fully without a wallet.
@@ -134,8 +136,8 @@ pickups (light), level-ups / task completions (medium/success) and game over
 (heavy). Desktop behaviour is unchanged.
 
 **⚠️ Unverified — needs a live test with the user's Binance app:** whether the
-Binance Agentic Wallet itself accepts a WalletConnect session (scan the QR in the
-Binance app and approve). The game never claims a direct Binance Agentic Wallet
+Binance Agentic Wallet itself accepts a WalletConnect session (tap "Open in
+Binance App" and approve). The game never claims a direct Binance Agentic Wallet
 SDK connection — the UI labels it honestly as WalletConnect. If the Binance app
 does not support WalletConnect, players can still play in Telegram for fun and
 submit scores from a desktop/mobile Web3 browser with an injected wallet.

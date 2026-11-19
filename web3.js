@@ -5,6 +5,9 @@
    window.ethereum for the wallet. Everything fails soft with a message.
    Inside Telegram (Mini App) there is no injected wallet, so we offer a
    WalletConnect path instead (needs a free project ID — see below).
+   No QR code is ever shown: the hackathon rules ban web-based QR-code
+   login for Agentic Wallet, so WalletConnect connects via a deep-link
+   button ("Open in Binance App") only — never a scannable code.
    ===================================================================== */
 (function () {
   var BSC_CHAIN_ID_HEX = "0x38"; // 56
@@ -70,7 +73,7 @@
   var submitBtn = el("submitScoreBtn");
   var txStatus = el("txStatus");
   var wcPanel = el("wcPanel");
-  var wcQrEl = el("wcQr");
+  var wcOpenBtn = el("wcOpenBtn");
   var wcUriEl = el("wcUri");
   var wcCopyBtn = el("wcCopyBtn");
   var wcDisconnectBtn = el("wcDisconnectBtn");
@@ -188,8 +191,8 @@
       });
     } else {
       // No injected wallet (e.g. Telegram WebView): WalletConnect path.
-      setStatus("<strong>No browser wallet here.</strong> Opening WalletConnect — scan the code " +
-        "in your wallet app to connect and authorise.", "unknown");
+      setStatus("<strong>No browser wallet here.</strong> Opening WalletConnect — tap 'Open in " +
+        "Binance App' to connect and authorise.", "unknown");
       connectWalletConnect();
     }
   }
@@ -209,8 +212,8 @@
     wcPanel.classList.remove("hidden");
     if (uri) {
       wcUriEl.textContent = uri;
-      wcQrEl.src = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=" + encodeURIComponent(uri);
-      wcStatusEl.textContent = "Scan the QR in your wallet app and approve the connection.";
+      if (wcOpenBtn) wcOpenBtn.href = uri;
+      wcStatusEl.textContent = "Tap 'Open in Binance App' and approve the connection in your wallet.";
     }
   }
   function disconnectWalletConnect() {

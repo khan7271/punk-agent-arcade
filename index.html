@@ -30,11 +30,11 @@
     </div>
     <div id="wcPanel" class="wc-panel hidden">
       <strong>🔗 Connect via WalletConnect</strong>
-      <p class="small">No browser wallet here (e.g. inside Telegram) — scan this code in your
-      wallet app to connect. It must hold a Binance Agent ID to submit scores.</p>
-      <img id="wcQr" class="wc-qr" alt="WalletConnect QR code" src="">
+      <p class="small">No browser wallet here (e.g. inside Telegram) — tap the button to open
+      your wallet app and approve the connection. No QR code is shown. It must hold a Binance Agent ID to submit scores.</p>
       <p><code id="wcUri" class="wc-uri"></code></p>
       <div class="wc-actions">
+        <a id="wcOpenBtn" class="btn btn-cyan" href="#" rel="noopener">📱 Open in Binance App</a>
         <button id="wcCopyBtn" class="btn btn-cyan">📋 Copy connection link</button>
         <button id="wcDisconnectBtn" class="btn">Disconnect</button>
       </div>
