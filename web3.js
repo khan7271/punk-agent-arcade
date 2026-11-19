@@ -11,7 +11,7 @@
    ===================================================================== */
 (function () {
   var BSC_CHAIN_ID_HEX = "0x38"; // 56
-  var RPC_URL = "https://bsc-dataseed.bnbchain.org";
+  var RPC_URL = "https://bsc.publicnode.com";
   var REGISTRY = "0x60b9262456de011f7d15a54cdd8c48baaa8b022f"; // Agent ID (ERC-721)
   var ARCADE = "0x4668bfdf7e2b6911aaa7f3947ac613c6a4368066";
   var BSCSCAN = "https://bscscan.com";
@@ -80,8 +80,9 @@
   var wcStatusEl = el("wcStatus");
 
   // ---- RPC helpers ----------------------------------------------------
-  // Two public BSC endpoints — if the first is unreachable, try the second.
-  var RPC_URLS = ["https://bsc-dataseed.bnbchain.org", "https://bsc.publicnode.com"];
+  // Two public BSC endpoints — publicnode first: dataseed returned empty
+  // replies on 2026-11-19 and the leaderboard failed to load on it.
+  var RPC_URLS = ["https://bsc.publicnode.com", "https://bsc-dataseed.bnbchain.org"];
   function rpc(method, params) {
     var attempt = 0;
     function tryNext() {

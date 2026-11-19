@@ -195,7 +195,7 @@
         (done ? "✅" : "○") + "</span><span><b>" + t.title + "</b> — " + t.desc +
         " <span class=\"task-bonus\">+" + TASK_BONUS + " pts</span></span></div>";
     }).join("");
-    ["tasksPanelReady", "tasksPanelOver"].forEach(function (id) {
+    ["tasksPanel"].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.innerHTML = "<h3>🎯 HARD TASKS</h3>" + html;
     });
