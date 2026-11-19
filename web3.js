@@ -11,7 +11,7 @@
   // TODO (parent): paste the deployed PunkAgentArcade address here after
   // mainnet deploy, then redeploy the site. Until then the leaderboard
   // shows "not deployed yet" and score submit is disabled.
-  var ARCADE = "0x0000000000000000000000000000000000000000";
+  var ARCADE = "0x4668bfdf7e2b6911aaa7f3947ac613c6a4368066";
   var BSCSCAN = "https://bscscan.com";
 
   // Function selectors (from `cast sig`, verified against the compiled ABI)
