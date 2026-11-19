@@ -7,6 +7,7 @@
 <meta name="description" content="A punk neon arcade game for Binance Agent ID holders on BNB Chain. Run, dodge, grab bolts, and submit your score on-chain. Free to play — gas only for score submits. Built for the Binance Agent ID Hackathon.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 <link rel="stylesheet" href="style.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -27,6 +28,18 @@
       (claimed in the Binance app) unlocks on-chain score submits.
       No Agent ID yet? Claim one free in the Binance app: Wallet → Agent ID banner.
     </div>
+    <div id="wcPanel" class="wc-panel hidden">
+      <strong>🔗 Connect via WalletConnect</strong>
+      <p class="small">No browser wallet here (e.g. inside Telegram) — scan this code in your
+      wallet app to connect. It must hold a Binance Agent ID to submit scores.</p>
+      <img id="wcQr" class="wc-qr" alt="WalletConnect QR code" src="">
+      <p><code id="wcUri" class="wc-uri"></code></p>
+      <div class="wc-actions">
+        <button id="wcCopyBtn" class="btn btn-cyan">📋 Copy connection link</button>
+        <button id="wcDisconnectBtn" class="btn">Disconnect</button>
+      </div>
+      <p id="wcStatus" class="small"></p>
+    </div>
     <ol class="howto">
       <li><b>1.</b> Connect wallet (BNB Chain)</li>
       <li><b>2.</b> We check your Agent ID on-chain</li>
@@ -38,25 +51,32 @@
   <section class="game-section">
     <div class="hud">
       <div class="hud-item">SCORE <span id="scoreHud">0</span></div>
+      <div class="hud-item">LEVEL <span id="levelHud">1</span></div>
       <div class="hud-item">BOLTS <span id="boltsHud">0</span> ⚡</div>
       <div class="hud-item">BEST <span id="bestHud">0</span></div>
       <div class="hud-item">SPEED <span id="speedHud">x1.0</span></div>
     </div>
     <div class="canvas-wrap">
       <canvas id="gameCanvas" width="880" height="360"></canvas>
+      <div id="levelBanner" class="level-banner hidden"></div>
+      <div id="taskToast" class="task-toast hidden"></div>
       <div id="gameOverOverlay" class="overlay hidden">
         <h2>WASTED!</h2>
         <p>Final score: <b id="finalScore">0</b></p>
         <p class="small" id="bestLine">Your best (this browser): 0</p>
+        <p class="small" id="levelLine">Level reached: 1 · Best level: 1</p>
         <button id="submitScoreBtn" class="btn btn-pink">Submit score on-chain</button>
         <p id="txStatus" class="small"></p>
         <button id="playAgainBtn" class="btn btn-cyan">Play again</button>
+        <div class="tasks-panel" id="tasksPanelOver"></div>
       </div>
       <div id="readyOverlay" class="overlay">
         <h2>NEON PUNK RUNNER</h2>
         <p>Jump the spikes. Dodge the barriers. Grab the bolts (+50 each).</p>
         <p class="small">SPACE / ↑ / TAP to jump — press twice for a double jump. No wallet needed to practice.</p>
+        <p class="small">⚡ Level up every 250 pts or 20s survived — faster, denser, new obstacles, +100 pts per level. Hard tasks pay +200 each.</p>
         <button id="startBtn" class="btn btn-pink btn-big">▶ START RUN</button>
+        <div class="tasks-panel" id="tasksPanelReady"></div>
       </div>
     </div>
     <p class="controls-hint">Controls: <b>SPACE</b> / <b>↑</b> / <b>W</b> / <b>tap</b> = jump (double jump in the air) · <b>Enter</b> = start</p>

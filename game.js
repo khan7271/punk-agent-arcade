@@ -14,6 +14,10 @@
   var boltsHud = document.getElementById("boltsHud");
   var bestHud = document.getElementById("bestHud");
   var speedHud = document.getElementById("speedHud");
+  var levelHud = document.getElementById("levelHud");
+  var levelLineEl = document.getElementById("levelLine");
+  var levelBannerEl = document.getElementById("levelBanner");
+  var taskToastEl = document.getElementById("taskToast");
   var readyOverlay = document.getElementById("readyOverlay");
   var overOverlay = document.getElementById("gameOverOverlay");
   var finalScoreEl = document.getElementById("finalScore");
@@ -37,6 +41,58 @@
   var BEST_KEY = "punk-agent-arcade-best";
   var best = 0;
   try { best = parseInt(window.localStorage.getItem(BEST_KEY) || "0", 10) || 0; } catch (e) { best = 0; }
+
+  // ---- levels ----------------------------------------------------------
+  // Level up every 250 points OR every ~20 seconds survived — whichever
+  // comes first. Each level raises speed + obstacle density and can add a
+  // new obstacle type. Level-ups pay +100 bonus points.
+  var LEVEL_POINTS = 250;
+  var LEVEL_SECONDS = 20;
+  var LEVEL_BONUS = 100;
+  var level = 1;
+  var bonusPoints = 0; // level-up + task bonuses — part of the score
+  var dodgedThisRun = 0;
+  var djumpsThisRun = 0;
+  var runTasks = {}; // task id -> true once completed this run
+  var levelBannerTimer = null;
+  var toastTimer = null;
+
+  var BEST_LEVEL_KEY = "punk-agent-arcade-best-level";
+  var bestLevel = 1;
+  try { bestLevel = parseInt(window.localStorage.getItem(BEST_LEVEL_KEY) || "1", 10) || 1; } catch (e) { bestLevel = 1; }
+
+  // ---- hard tasks (missions) -------------------------------------------
+  // Completing a task mid-run pays +200 bonus points and a banner.
+  // Completed tasks persist in localStorage and show with a checkmark.
+  var TASKS_KEY = "punk-agent-arcade-tasks";
+  var TASK_BONUS = 200;
+  var TASKS = [
+    { id: "bolts10",   title: "Bolt Hoarder", desc: "Collect 10 bolts in one run",              check: function () { return bolts >= 10; } },
+    { id: "survive60", title: "Survivor",     desc: "Survive 60 seconds in one run",            check: function () { return frame / 60 >= 60; } },
+    { id: "score500",  title: "High Roller",  desc: "Score 500 in a single run",                check: function () { return getScore() >= 500; } },
+    { id: "dodge15",   title: "Untouchable",  desc: "Dodge 15 obstacles in a row without a hit", check: function () { return dodgedThisRun >= 15; } },
+    { id: "djump5",    title: "Air Show",     desc: "Double-jump 5 times in one run",           check: function () { return djumpsThisRun >= 5; } }
+  ];
+  var tasksDone = {}; // id -> true, persisted across runs
+  try {
+    JSON.parse(window.localStorage.getItem(TASKS_KEY) || "[]").forEach(function (id) { tasksDone[id] = true; });
+  } catch (e) { /* ignore */ }
+  function saveTasksDone() {
+    try { window.localStorage.setItem(TASKS_KEY, JSON.stringify(Object.keys(tasksDone))); } catch (e) { /* ignore */ }
+  }
+
+  // ---- haptics (Telegram Mini App, no-op on desktop) --------------------
+  function haptic(kind) {
+    try {
+      var tg = window.Telegram && window.Telegram.WebApp;
+      if (tg && tg.HapticFeedback) {
+        if (kind === "heavy") tg.HapticFeedback.impactOccurred("heavy");
+        else if (kind === "medium") tg.HapticFeedback.impactOccurred("medium");
+        else if (kind === "success") tg.HapticFeedback.notificationOccurred("success");
+        else tg.HapticFeedback.impactOccurred("light");
+      }
+    } catch (e) { /* haptics are optional */ }
+  }
 
   // ---- scenery (precomputed so it doesn't flicker) -------------------
   var stars = [];
@@ -68,12 +124,81 @@
   }
 
   // ---- helpers --------------------------------------------------------
-  function getScore() { return Math.floor(distance / 10) + bolts * 50; }
+  function getScore() { return Math.floor(distance / 10) + bolts * 50 + bonusPoints; }
   function saveBest(s) {
     if (s > best) {
       best = s;
       try { window.localStorage.setItem(BEST_KEY, String(s)); } catch (e) { /* ignore */ }
     }
+  }
+  function saveBestLevel(l) {
+    if (l > bestLevel) {
+      bestLevel = l;
+      try { window.localStorage.setItem(BEST_LEVEL_KEY, String(l)); } catch (e) { /* ignore */ }
+    }
+  }
+  function showLevelBanner(text) {
+    if (!levelBannerEl) return;
+    levelBannerEl.textContent = text;
+    levelBannerEl.classList.remove("hidden");
+    levelBannerEl.classList.remove("flash");
+    void levelBannerEl.offsetWidth; // restart the animation
+    levelBannerEl.classList.add("flash");
+    if (levelBannerTimer) clearTimeout(levelBannerTimer);
+    levelBannerTimer = setTimeout(function () { levelBannerEl.classList.add("hidden"); }, 1700);
+  }
+  function showTaskToast(text) {
+    if (!taskToastEl) return;
+    taskToastEl.textContent = text;
+    taskToastEl.classList.remove("hidden");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { taskToastEl.classList.add("hidden"); }, 2600);
+  }
+  function levelUp() {
+    level++;
+    bonusPoints += LEVEL_BONUS;
+    saveBestLevel(level);
+    beep(660, 0.1, "square");
+    setTimeout(function () { beep(880, 0.12, "square"); }, 110);
+    haptic("medium");
+    showLevelBanner("⚡ LEVEL " + level + " UP! +" + LEVEL_BONUS + " PTS");
+    updateHud();
+  }
+  function checkLevelUp() {
+    var fromScore = Math.floor(getScore() / LEVEL_POINTS) + 1;
+    var fromTime = Math.floor((frame / 60) / LEVEL_SECONDS) + 1;
+    var target = Math.max(fromScore, fromTime, level);
+    while (level < target) levelUp();
+  }
+  function checkTasks() {
+    for (var i = 0; i < TASKS.length; i++) {
+      var t = TASKS[i];
+      if (runTasks[t.id]) continue;
+      var done = false;
+      try { done = t.check(); } catch (e) { done = false; }
+      if (!done) continue;
+      runTasks[t.id] = true;
+      bonusPoints += TASK_BONUS;
+      if (!tasksDone[t.id]) { tasksDone[t.id] = true; saveTasksDone(); }
+      beep(990, 0.1, "sine");
+      setTimeout(function () { beep(1320, 0.14, "sine"); }, 100);
+      haptic("success");
+      showTaskToast("✅ TASK COMPLETE: " + t.title + " +" + TASK_BONUS + " PTS");
+      renderTasksPanels();
+      updateHud();
+    }
+  }
+  function renderTasksPanels() {
+    var html = TASKS.map(function (t) {
+      var done = !!tasksDone[t.id];
+      return "<div class=\"task-row" + (done ? " done" : "") + "\"><span class=\"task-mark\">" +
+        (done ? "✅" : "○") + "</span><span><b>" + t.title + "</b> — " + t.desc +
+        " <span class=\"task-bonus\">+" + TASK_BONUS + " pts</span></span></div>";
+    }).join("");
+    ["tasksPanelReady", "tasksPanelOver"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.innerHTML = "<h3>🎯 HARD TASKS</h3>" + html;
+    });
   }
   function rand(a, b) { return a + Math.random() * (b - a); }
   function rectsHit(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -82,8 +207,12 @@
 
   function reset() {
     frame = 0; distance = 0; bolts = 0; speed = 5.5; spawnIn = 55;
+    level = 1; bonusPoints = 0; dodgedThisRun = 0; djumpsThisRun = 0; runTasks = {};
     obstacles = []; pickups = []; particles = [];
     player.y = GROUND_Y - player.h; player.vy = 0; player.jumps = 0; player.onGround = true;
+    if (levelBannerEl) levelBannerEl.classList.add("hidden");
+    if (taskToastEl) taskToastEl.classList.add("hidden");
+    renderTasksPanels();
     updateHud();
   }
 
@@ -100,16 +229,21 @@
     overAtFrame = frame;
     var s = getScore();
     saveBest(s);
+    saveBestLevel(level);
     beep(110, 0.35, "sawtooth");
+    haptic("heavy");
     // burst of particles where the punk died
     for (var i = 0; i < 26; i++) {
       particles.push({ x: player.x + 23, y: player.y + 27, vx: rand(-4, 4), vy: rand(-7, 1), life: 30 + Math.random() * 20, c: ["#ff2e88", "#00e5ff", "#ffe600"][i % 3] });
     }
     finalScoreEl.textContent = String(s);
     bestLineEl.textContent = "Your best (this browser): " + best;
+    if (levelLineEl) levelLineEl.textContent = "Level reached: " + level + " · Best level: " + bestLevel;
+    renderTasksPanels();
     overOverlay.classList.remove("hidden");
     updateHud();
     window.PunkGame.lastScore = s;
+    window.PunkGame.lastLevel = level;
     window.dispatchEvent(new CustomEvent("punkgameover", { detail: { score: s } }));
   }
 
@@ -120,17 +254,25 @@
       return;
     }
     if (player.jumps < 2) {
+      var wasAirJump = player.jumps === 1; // second jump = double jump
       player.vy = player.jumps === 0 ? -14.2 : -12.5;
       player.jumps++;
+      if (wasAirJump) djumpsThisRun++;
       player.onGround = false;
       beep(player.jumps === 1 ? 520 : 660, 0.07, "square");
     }
   }
 
   // ---- spawning -------------------------------------------------------
+  // Obstacle mix gets meaner with the level: walls from level 2,
+  // hover drones from level 3 (stay low — jumping into one kills you).
   function spawnObstacle() {
     var roll = Math.random();
-    if (roll < 0.45) {
+    if (level >= 3 && roll < 0.15) {
+      obstacles.push({ kind: "drone", x: W + 20, y: GROUND_Y - 132, w: 44, h: 30, bob: Math.random() * 6 });
+    } else if (level >= 2 && roll < 0.32) {
+      obstacles.push({ kind: "wall", x: W + 20, y: GROUND_Y - 100, w: 44, h: 100 });
+    } else if (roll < 0.45) {
       obstacles.push({ kind: "spike", x: W + 20, y: GROUND_Y - 34, w: 34, h: 34 });
     } else if (roll < 0.8) {
       obstacles.push({ kind: "barrier", x: W + 20, y: GROUND_Y - 70, w: 34, h: 70 });
@@ -151,9 +293,14 @@
   function update() {
     frame++;
     if (state === "playing") {
-      speed = Math.min(12.5, 5.5 + frame * 0.0016);
+      // speed grows with the level (+ a slow time ramp), capped
+      speed = Math.min(13.5, 5 + level * 0.55 + frame * 0.0008);
       distance += speed;
       runPhase += speed * 0.09;
+
+      // levels + tasks are checked every frame while playing
+      checkLevelUp();
+      checkTasks();
 
       // player physics
       player.vy = Math.min(18, player.vy + 0.85);
@@ -165,18 +312,18 @@
         player.onGround = true;
       }
 
-      // spawn
+      // spawn — denser as the level rises
       spawnIn -= 1;
       if (spawnIn <= 0) {
         spawnObstacle();
-        spawnIn = Math.max(38, Math.round(rand(62, 100) * (6.5 / speed)));
+        spawnIn = Math.max(30, Math.round(rand(62, 100) * (6.5 / speed) * Math.max(0.55, 1 - level * 0.04)));
       }
 
       // move + collide obstacles
       for (var i = obstacles.length - 1; i >= 0; i--) {
         var ob = obstacles[i];
         ob.x -= speed;
-        if (ob.x + ob.w < -20) { obstacles.splice(i, 1); continue; }
+        if (ob.x + ob.w < -20) { obstacles.splice(i, 1); dodgedThisRun++; continue; }
         if (rectsHit(player.x + 7, player.y + 4, player.w - 14, player.h - 6, ob.x + 3, ob.y + 3, ob.w - 6, ob.h - 3)) {
           gameOver();
           return;
@@ -191,6 +338,7 @@
           p.taken = true;
           bolts++;
           beep(880, 0.09, "sine");
+          haptic("light");
           pickups.splice(j, 1);
         }
       }
@@ -209,6 +357,7 @@
     boltsHud.textContent = String(bolts);
     bestHud.textContent = String(Math.max(best, getScore()));
     speedHud.textContent = "x" + (speed / 5.5).toFixed(1);
+    if (levelHud) levelHud.textContent = String(level);
   }
 
   // ---- drawing --------------------------------------------------------
@@ -307,6 +456,48 @@
         ctx.fill();
         ctx.fillStyle = "#4d0a26";
         ctx.fillRect(ob.x, ob.y + ob.h - 6, ob.w, 6);
+      } else if (ob.kind === "drone") {
+        // hover drone — bobs gently, deadly if you jump into it; run under it
+        var bobY = ob.y + Math.sin(frame * 0.12 + (ob.bob || 0)) * 5;
+        ctx.save();
+        ctx.shadowColor = "#ff2e88";
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = "#ff2e88";
+        ctx.beginPath();
+        ctx.ellipse(ob.x + ob.w / 2, bobY + ob.h / 2, ob.w / 2, ob.h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = "#1a1a2a";
+        ctx.beginPath();
+        ctx.arc(ob.x + ob.w / 2, bobY + ob.h / 2, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffe600";
+        ctx.beginPath();
+        ctx.arc(ob.x + ob.w / 2, bobY + ob.h / 2, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        // rotor blur
+        ctx.strokeStyle = "rgba(0,229,255,0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ob.x - 6, bobY - 4);
+        ctx.lineTo(ob.x + ob.w + 6, bobY - 4);
+        ctx.stroke();
+      } else if (ob.kind === "wall") {
+        // tall brick wall — jump early, jump high
+        ctx.fillStyle = "#3d2b63";
+        ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+        ctx.strokeStyle = "#ff2e88";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(ob.x, ob.y, ob.w, ob.h);
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.lineWidth = 1;
+        for (var wy = ob.y + 16; wy < ob.y + ob.h; wy += 16) {
+          ctx.beginPath(); ctx.moveTo(ob.x, wy); ctx.lineTo(ob.x + ob.w, wy); ctx.stroke();
+        }
+        ctx.fillStyle = "#ffe600";
+        ctx.font = "bold 13px 'Arial Black', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("!", ob.x + ob.w / 2, ob.y + 20);
       } else {
         // barrier: hazard stripes
         ctx.fillStyle = "#ffe600";
@@ -398,10 +589,19 @@
   window.PunkGame = {
     getScore: getScore,
     getState: function () { return state; },
+    getLevel: function () { return level; },
+    getBestLevel: function () { return bestLevel; },
+    getTasks: function () {
+      return TASKS.map(function (t) {
+        return { id: t.id, title: t.title, desc: t.desc, bonus: TASK_BONUS, done: !!tasksDone[t.id], doneThisRun: !!runTasks[t.id] };
+      });
+    },
     lastScore: 0,
+    lastLevel: 1,
     start: start
   };
 
+  renderTasksPanels();
   updateHud();
   loop();
 })();

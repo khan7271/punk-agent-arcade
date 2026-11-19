@@ -113,8 +113,55 @@ main { max-width: 960px; margin: 0 auto; padding: 20px; }
 
 footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 12px 34px; font-family: "Segoe UI", Arial, sans-serif; }
 
+/* ---- levels + hard tasks ---- */
+.level-banner {
+  position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
+  z-index: 5; pointer-events: none; text-align: center;
+  font-size: 34px; color: var(--yellow); text-shadow: 3px 3px 0 #000, 0 0 24px var(--pink);
+  white-space: nowrap;
+}
+.level-banner.flash { animation: banner-pop .45s ease-out; }
+@keyframes banner-pop {
+  0% { transform: translate(-50%, -50%) scale(.6); opacity: 0; }
+  60% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+.task-toast {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  z-index: 5; pointer-events: none; text-align: center;
+  background: rgba(18, 18, 31, .92); border: 2px solid var(--lime); color: var(--lime);
+  border-radius: 8px; padding: 8px 14px; font-size: 14px; white-space: nowrap;
+  max-width: 94%; overflow: hidden; text-overflow: ellipsis;
+}
+.tasks-panel {
+  text-align: left; width: 100%; max-width: 520px;
+  background: rgba(18, 18, 31, .9); border: 2px solid var(--cyan); border-radius: 8px;
+  padding: 12px 14px; font-family: "Segoe UI", Arial, sans-serif; font-size: 14px;
+}
+.tasks-panel h3 { margin: 0 0 8px; font-size: 15px; color: var(--yellow); font-family: inherit; }
+.task-row { display: flex; gap: 8px; padding: 4px 0; color: var(--text); }
+.task-row.done { color: var(--lime); }
+.task-mark { width: 20px; flex-shrink: 0; }
+.task-bonus { color: var(--yellow); font-size: 12px; }
+
+/* ---- WalletConnect panel ---- */
+.wc-panel {
+  border: 2px solid var(--cyan); border-radius: 8px; padding: 12px 14px;
+  font-family: "Segoe UI", Arial, sans-serif; font-size: 15px; line-height: 1.5;
+  background: var(--panel); margin: 14px 0; text-align: center;
+}
+.wc-panel p { margin: 8px 0; }
+.wc-qr { width: 220px; height: 220px; background: #fff; border-radius: 8px; }
+.wc-uri {
+  display: block; word-break: break-all; font-size: 11px; text-align: left;
+  max-height: 64px; overflow-y: auto;
+}
+.wc-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
 @media (max-width: 640px) {
   .hero h1 { font-size: 28px; }
   .overlay h2 { font-size: 26px; }
   .logo { font-size: 17px; }
+  .level-banner { font-size: 24px; }
+  .task-toast { font-size: 12px; }
 }

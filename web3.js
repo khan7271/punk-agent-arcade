@@ -3,16 +3,43 @@
    PUNK AGENT ARCADE — wallet, Agent ID check, leaderboard, score submit.
    No libraries: plain fetch() JSON-RPC to a public BSC endpoint, and
    window.ethereum for the wallet. Everything fails soft with a message.
+   Inside Telegram (Mini App) there is no injected wallet, so we offer a
+   WalletConnect path instead (needs a free project ID — see below).
    ===================================================================== */
 (function () {
   var BSC_CHAIN_ID_HEX = "0x38"; // 56
   var RPC_URL = "https://bsc-dataseed.bnbchain.org";
   var REGISTRY = "0x60b9262456de011f7d15a54cdd8c48baaa8b022f"; // Agent ID (ERC-721)
-  // TODO (parent): paste the deployed PunkAgentArcade address here after
-  // mainnet deploy, then redeploy the site. Until then the leaderboard
-  // shows "not deployed yet" and score submit is disabled.
   var ARCADE = "0x4668bfdf7e2b6911aaa7f3947ac613c6a4368066";
   var BSCSCAN = "https://bscscan.com";
+
+  // ---- WalletConnect (only used when there is no injected wallet) ------
+  // Free project ID from https://cloud.walletconnect.com — paste it here.
+  // Until it is set, the WalletConnect button explains how to get one.
+  // NOTE (unverified): whether the Binance Agentic Wallet app accepts a
+  // WalletConnect session has NOT been tested live yet — see README.
+  var WC_PROJECT_ID = "";
+  var WC_PROVIDER_URL = "https://unpkg.com/@walletconnect/ethereum-provider@2.21.0/dist/umd/index.min.js";
+
+  // ---- Telegram Mini App ------------------------------------------------
+  // tg.ready()/expand() + theme colours when opened inside Telegram.
+  // On desktop this block is a no-op (window.Telegram is undefined).
+  var tg = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : null;
+  if (tg) {
+    try {
+      tg.ready();
+      tg.expand();
+      var tp = tg.themeParams || {};
+      var root = document.documentElement;
+      if (tp.bg_color) root.style.setProperty("--bg", tp.bg_color);
+      if (tp.text_color) root.style.setProperty("--text", tp.text_color);
+      if (tp.secondary_bg_color) root.style.setProperty("--panel", tp.secondary_bg_color);
+      if (tp.hint_color) root.style.setProperty("--muted", tp.hint_color);
+      if (tp.button_color) root.style.setProperty("--cyan", tp.button_color);
+      if (tg.setHeaderColor) tg.setHeaderColor(tp.bg_color || "#0a0a12");
+      if (tg.setBackgroundColor) tg.setBackgroundColor(tp.bg_color || "#0a0a12");
+    } catch (e) { /* Telegram theming is optional */ }
+  }
 
   // Function selectors (from `cast sig`, verified against the compiled ABI)
   var SEL = {
@@ -27,6 +54,8 @@
 
   var account = null;
   var isHolder = false;
+  var wcProvider = null;
+  var activeProvider = null; // window.ethereum OR the WalletConnect provider
 
   // ---- DOM ------------------------------------------------------------
   function el(id) { return document.getElementById(id); }
@@ -40,17 +69,33 @@
   var boardMeta = el("boardMeta");
   var submitBtn = el("submitScoreBtn");
   var txStatus = el("txStatus");
+  var wcPanel = el("wcPanel");
+  var wcQrEl = el("wcQr");
+  var wcUriEl = el("wcUri");
+  var wcCopyBtn = el("wcCopyBtn");
+  var wcDisconnectBtn = el("wcDisconnectBtn");
+  var wcStatusEl = el("wcStatus");
 
   // ---- RPC helpers ----------------------------------------------------
+  // Two public BSC endpoints — if the first is unreachable, try the second.
+  var RPC_URLS = ["https://bsc-dataseed.bnbchain.org", "https://bsc.publicnode.com"];
   function rpc(method, params) {
-    return fetch(RPC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: method, params: params })
-    }).then(function (r) { return r.json(); }).then(function (j) {
-      if (j.error) throw new Error(j.error.message || "RPC error");
-      return j.result;
-    });
+    var attempt = 0;
+    function tryNext() {
+      return fetch(RPC_URLS[attempt], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: method, params: params })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.error) throw new Error(j.error.message || "RPC error");
+        return j.result;
+      }).catch(function (err) {
+        attempt++;
+        if (attempt < RPC_URLS.length) return tryNext();
+        throw err;
+      });
+    }
+    return tryNext();
   }
   function padAddress(addr) { return "000000000000000000000000" + addr.toLowerCase().replace(/^0x/, ""); }
   function padUint(n) {
@@ -100,41 +145,121 @@
     });
   }
 
+  function onAccountsChanged(accounts) {
+    account = accounts && accounts.length ? accounts[0] : null;
+    connectBtn.textContent = account ? shortAddr(account) : "Connect Wallet";
+    if (account) checkAgentId(account);
+    else { isHolder = false; setBadge("unknown", "AGENT ID: NOT CHECKED"); }
+  }
+
   function connectWallet() {
-    if (!window.ethereum) {
-      setStatus("<strong>No wallet found.</strong> Install MetaMask or open this page in the " +
-        "Binance Wallet / a Web3 browser, then connect.", "unknown");
+    if (window.ethereum) {
+      // Desktop / Web3 browser: injected wallet (MetaMask, Binance Wallet…)
+      activeProvider = window.ethereum;
+      connectBtn.disabled = true;
+      connectBtn.textContent = "Connecting…";
+      activeProvider.request({ method: "eth_requestAccounts" }).then(function (accounts) {
+        if (!accounts || !accounts.length) throw new Error("no account returned");
+        account = accounts[0];
+        connectBtn.textContent = shortAddr(account);
+        return activeProvider.request({ method: "eth_chainId" });
+      }).then(function (chainId) {
+        if (chainId !== BSC_CHAIN_ID_HEX) {
+          return activeProvider.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: BSC_CHAIN_ID_HEX }]
+          }).catch(function () {
+            setStatus("<strong>Wrong chain.</strong> Please switch your wallet to BNB Chain (id 56) " +
+              "and press Connect again.", "unknown");
+            throw new Error("wrong chain");
+          });
+        }
+      }).then(function () {
+        return checkAgentId(account);
+      }).then(function () {
+        if (isDeployed()) refreshMyBest();
+      }).catch(function (err) {
+        if (err && err.message !== "wrong chain") {
+          setStatus("<strong>Connect failed:</strong> " + err.message, "unknown");
+        }
+      }).finally(function () {
+        connectBtn.disabled = false;
+        if (!account) connectBtn.textContent = "Connect Wallet";
+      });
+    } else {
+      // No injected wallet (e.g. Telegram WebView): WalletConnect path.
+      setStatus("<strong>No browser wallet here.</strong> Opening WalletConnect — scan the code " +
+        "in your wallet app to connect and authorise.", "unknown");
+      connectWalletConnect();
+    }
+  }
+
+  // ---- WalletConnect (Telegram / mobile, no injected provider) --------
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = src;
+      s.onload = function () { resolve(); };
+      s.onerror = function () { reject(new Error("failed to load " + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  function showWcPanel(uri) {
+    if (!wcPanel) return;
+    wcPanel.classList.remove("hidden");
+    if (uri) {
+      wcUriEl.textContent = uri;
+      wcQrEl.src = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=" + encodeURIComponent(uri);
+      wcStatusEl.textContent = "Scan the QR in your wallet app and approve the connection.";
+    }
+  }
+  function disconnectWalletConnect() {
+    var p = wcProvider;
+    wcProvider = null;
+    if (activeProvider === p) activeProvider = null;
+    if (p) { try { p.disconnect(); } catch (e) { /* ignore */ } }
+    account = null;
+    isHolder = false;
+    connectBtn.textContent = "Connect Wallet";
+    setBadge("unknown", "AGENT ID: NOT CHECKED");
+    if (wcPanel) wcPanel.classList.add("hidden");
+  }
+  function connectWalletConnect() {
+    if (!WC_PROJECT_ID) {
+      setStatus("<strong>WalletConnect is not configured yet.</strong> It needs a free Project ID " +
+        "from <a href=\"https://cloud.walletconnect.com\" target=\"_blank\" rel=\"noopener\">cloud.walletconnect.com</a> " +
+        "— paste it as WC_PROJECT_ID in web3.js (takes ~2 minutes, free). " +
+        "On desktop, install MetaMask or open this page in a Web3 browser instead.", "unknown");
       return;
     }
-    connectBtn.disabled = true;
-    connectBtn.textContent = "Connecting…";
-    window.ethereum.request({ method: "eth_requestAccounts" }).then(function (accounts) {
-      if (!accounts || !accounts.length) throw new Error("no account returned");
+    if (wcStatusEl) wcStatusEl.textContent = "Opening WalletConnect…";
+    showWcPanel(null);
+    var ready = window.EthereumProvider ? Promise.resolve() : loadScript(WC_PROVIDER_URL);
+    ready.then(function () {
+      return window.EthereumProvider.init({
+        projectId: WC_PROJECT_ID,
+        chains: [56],
+        showQrModal: false,
+        rpcMap: { 56: RPC_URL }
+      });
+    }).then(function (provider) {
+      wcProvider = provider;
+      provider.on("display_uri", function (uri) { showWcPanel(uri); });
+      provider.on("accountsChanged", onAccountsChanged);
+      provider.on("disconnect", disconnectWalletConnect);
+      return provider.connect();
+    }).then(function () {
+      var accounts = (wcProvider && wcProvider.accounts) || [];
+      if (!accounts.length) throw new Error("no account returned");
+      activeProvider = wcProvider;
       account = accounts[0];
       connectBtn.textContent = shortAddr(account);
-      return window.ethereum.request({ method: "eth_chainId" });
-    }).then(function (chainId) {
-      if (chainId !== BSC_CHAIN_ID_HEX) {
-        return window.ethereum.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId: BSC_CHAIN_ID_HEX }]
-        }).catch(function () {
-          setStatus("<strong>Wrong chain.</strong> Please switch your wallet to BNB Chain (id 56) " +
-            "and press Connect again.", "unknown");
-          throw new Error("wrong chain");
-        });
-      }
-    }).then(function () {
+      if (wcStatusEl) wcStatusEl.textContent = "Connected via WalletConnect: " + shortAddr(account);
       return checkAgentId(account);
     }).then(function () {
       if (isDeployed()) refreshMyBest();
     }).catch(function (err) {
-      if (err && err.message !== "wrong chain") {
-        setStatus("<strong>Connect failed:</strong> " + err.message, "unknown");
-      }
-    }).finally(function () {
-      connectBtn.disabled = false;
-      if (!account) connectBtn.textContent = "Connect Wallet";
+      if (wcStatusEl) wcStatusEl.textContent = "WalletConnect failed: " + (err && err.message ? err.message : err);
     });
   }
 
@@ -208,8 +333,9 @@
   // ---- score submit -------------------------------------------------------
   function submitScore() {
     var score = (window.PunkGame && window.PunkGame.lastScore) || 0;
+    var prov = activeProvider || window.ethereum;
     txStatus.textContent = "";
-    if (!window.ethereum) { txStatus.textContent = "No wallet — connect one first."; return; }
+    if (!prov) { txStatus.textContent = "No wallet — connect one first."; return; }
     if (!account) { txStatus.textContent = "Connect your wallet first."; return; }
     if (!isHolder) { txStatus.textContent = "This wallet holds no Agent ID — the contract will reject the submit."; return; }
     if (!isDeployed()) { txStatus.textContent = "Contract not deployed yet — nothing to submit to. Play again after deploy."; return; }
@@ -218,7 +344,7 @@
     submitBtn.disabled = true;
     txStatus.textContent = "Sending submitScore(" + score + ") — confirm in your wallet (gas only)…";
     var data = SEL.submitScore + padUint(score);
-    window.ethereum.request({
+    prov.request({
       method: "eth_sendTransaction",
       params: [{ from: account, to: ARCADE, value: "0x0", data: data }]
     }).then(function (hash) {
@@ -252,8 +378,21 @@
   connectBtn.addEventListener("click", connectWallet);
   el("refreshBoardBtn").addEventListener("click", loadLeaderboard);
   submitBtn.addEventListener("click", submitScore);
+  if (wcCopyBtn) wcCopyBtn.addEventListener("click", function () {
+    var uri = wcUriEl.textContent;
+    if (!uri) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(uri).then(function () {
+        wcStatusEl.textContent = "Connection link copied — paste it in your wallet app to connect.";
+      }).catch(function () { wcStatusEl.textContent = "Copy failed — long-press the link text to copy it manually."; });
+    } else {
+      wcStatusEl.textContent = "Copy not supported here — long-press the link text to copy it manually.";
+    }
+  });
+  if (wcDisconnectBtn) wcDisconnectBtn.addEventListener("click", disconnectWalletConnect);
 
   if (window.ethereum && window.ethereum.request) {
+    activeProvider = window.ethereum;
     window.ethereum.request({ method: "eth_accounts" }).then(function (accounts) {
       if (accounts && accounts.length) {
         account = accounts[0];
@@ -261,11 +400,7 @@
         checkAgentId(account).then(function () { if (isDeployed()) refreshMyBest(); });
       }
     }).catch(function () { /* silent: user just isn't connected */ });
-    window.ethereum.on("accountsChanged", function (accounts) {
-      account = accounts && accounts.length ? accounts[0] : null;
-      connectBtn.textContent = account ? shortAddr(account) : "Connect Wallet";
-      if (account) checkAgentId(account); else { isHolder = false; setBadge("unknown", "AGENT ID: NOT CHECKED"); }
-    });
+    window.ethereum.on("accountsChanged", onAccountsChanged);
   }
 
   updateContractUI();

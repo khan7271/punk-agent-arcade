@@ -1,0 +1,1 @@
+{"dependencies":{"grammy":"^1.46.0"},"description":"Telegram bot for Punk Agent Arcade — play the game inside Telegram, check the on-chain leaderboard and your points.","engines":{"node":">=18"},"main":"bot.js","name":"punk-agent-arcade-bot","private":true,"scripts":{"start":"node bot.js"},"version":"1.0.0"}
